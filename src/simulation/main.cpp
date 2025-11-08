@@ -3,7 +3,6 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <cstdio>
@@ -26,28 +25,6 @@ struct Node {
         : center_x(cx), center_y(cy), center_z(cz), size(s),
         total_mass(0.0f), com_x(0.0f), com_y(0.0f), com_z(0.0f),
         is_leaf(true) {}
-
-    // creating destructor to delete children nodes to prevent memory leaks
-    ~Node() {
-            std::stack<std::unique_ptr<Node>> stack;
-
-            for (auto& child : children) {
-                if (child) {
-                    stack.push(std::move(child));
-                }
-            }
-
-            while (!stack.empty()) {
-                auto current = std::move(stack.top());
-                stack.pop();
-
-                for (auto& child : current->children) {
-                    if (child) {
-                        stack.push(std::move(child));
-                    }
-                }
-            }
-    }
 };
 
 class System {
@@ -74,7 +51,7 @@ class System {
     System &operator=(System &&) = default;
 
     // resizing to accomodate for N value
-    System(int N, float gravity_const) : num_particles(N), G(gravity_const), epsilon(1e-2f), theta(0.7f) {
+    System(int N, float gravity_const) : num_particles(N), G(gravity_const), epsilon(1e-2f), theta(1.0f) {
         pos_x.resize(N);
         pos_y.resize(N);
         pos_z.resize(N);
@@ -89,18 +66,6 @@ class System {
 
         masses.resize(N, 1.0f);
     };
-
-    // using this instead of standard inverse root due to its speed
-    inline float quake_root(float n) {
-        union {
-            float f;
-            uint32_t i;
-        } conv = {n};
-
-        conv.i = 0x5F375A86 - (conv.i >> 1);
-        conv.f *= 1.5f - (n * 0.5f * conv.f * conv.f);
-        return conv.f;
-    }
 
     // computing total mass M for COM
     inline float compute_total_mass() const {
@@ -320,8 +285,12 @@ class System {
     }
 
     void compute_node_force(const Node* node, int particle_id, float& acc_x, float& acc_y, float& acc_z) {
-        if (!node || node->total_mass == 0.0f) return;
-        // Calculate distance to node's center of mass
+        if (particle_id <0 || particle_id >= num_particles) return;
+
+        if (!node) return;
+
+        if (node->total_mass == 0.0f) return;
+
         float dx = node->com_x - pos_x[particle_id];
         float dy = node->com_y - pos_y[particle_id];
         float dz = node->com_z - pos_z[particle_id];
@@ -330,7 +299,7 @@ class System {
         float r = sqrtf(r2);
 
         if (node->size / r < theta || node->is_leaf) {
-            float rinv = quake_root(r2);
+            float rinv = 1.0f / std::sqrt(r2);
             float rinv3 = rinv * rinv * rinv;
             float force = G * rinv3;  // G / r^3
 
@@ -389,9 +358,8 @@ class System {
             acc_z[i] = acc_z_i;
         }
     }
-
-
 };
+
 // not my OpenGL code...
 GLFWwindow* window = nullptr;
 
@@ -404,7 +372,7 @@ void create_window() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
 
-    window = glfwCreateWindow(1440, 1080, "N-Body Sim.", NULL, NULL);
+    window = glfwCreateWindow(1920, 1080, "N-Body Sim.", NULL, NULL);
 
     glfwMakeContextCurrent(window);
 
@@ -456,7 +424,7 @@ int main() {
     srand(static_cast<unsigned int>(time(nullptr)));
     create_window();
 
-    const int N = 12000;
+    const int N = 1000;
     System sys(N, 0.001);
 
     for (int i = 0; i < sys.num_particles; ++i) {
@@ -489,8 +457,6 @@ int main() {
         }
         sys.masses[i] = 0.5f + (float)rand() / RAND_MAX * 2.0f;
     }
-
-    sys.G = 0.001f;
 
     sys.shift_to_COM();
     double last_time = glfwGetTime();
