@@ -1,16 +1,17 @@
+#include <memory>
+#include <array>
+#include <vector>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cwchar>
-#include <omp.h>
-#include <cstdio>
-#include <vector>
+#include <cstdlib>
 #include <ctime>
-#include <memory>
-#include <algorithm>
+#include <cstdio>
+#include <stack>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+// creating node struct for octree
 struct Node {
     float center_x, center_y, center_z;
     float size;
@@ -20,13 +21,39 @@ struct Node {
     std::vector<int> particles;
     std::array<std::unique_ptr<Node>, 8> children;
 
+    // creating constructor to initialize node(s)
     Node(float cx, float cy, float cz, float s)
         : center_x(cx), center_y(cy), center_z(cz), size(s),
         total_mass(0.0f), com_x(0.0f), com_y(0.0f), com_z(0.0f),
         is_leaf(true) {}
+
+    // creating destructor to delete children nodes to prevent memory leaks
+    ~Node() {
+            std::stack<std::unique_ptr<Node>> stack;
+
+            for (auto& child : children) {
+                if (child) {
+                    stack.push(std::move(child));
+                }
+            }
+
+            while (!stack.empty()) {
+                auto current = std::move(stack.top());
+                stack.pop();
+
+                for (auto& child : current->children) {
+                    if (child) {
+                        stack.push(std::move(child));
+                    }
+                }
+            }
+    }
 };
 
 class System {
+    private:
+    std::stack<Node> root_node;
+
     public:
     int num_particles;
     std::vector<float> pos_x, pos_y, pos_z;
@@ -36,6 +63,8 @@ class System {
 
     float G;
     float epsilon;
+
+    // supposed to determine accuracy of simulation
     float theta;
 
     // to utilize cache better
@@ -45,7 +74,7 @@ class System {
     System &operator=(System &&) = default;
 
     // resizing to accomodate for N value
-    System(int N, float gravity_const) : num_particles(N), G(gravity_const), epsilon(1e-4f) {
+    System(int N, float gravity_const) : num_particles(N), G(gravity_const), epsilon(1e-2f), theta(0.7f) {
         pos_x.resize(N);
         pos_y.resize(N);
         pos_z.resize(N);
@@ -73,6 +102,7 @@ class System {
         return conv.f;
     }
 
+    // computing total mass M for COM
     inline float compute_total_mass() const {
         float M = 0.0;
         for (int i = 0; i < num_particles; ++i) {
@@ -159,6 +189,7 @@ class System {
                 pos_z[i+2] += vel_z[i+2] * dt;
                 pos_z[i+3] += vel_z[i+3] * dt;
             }
+
             // handles remaining N % 4 particles
             for (; i < num_particles; ++i) {
                 vel_x[i] += acc_x[i] * dt;
@@ -178,63 +209,9 @@ class System {
         std::fill(acc_z.begin(), acc_z.end(), 0.0f);
     }
 
-    // main gravity function currently O(n^2) time
-    void compute_gravity() {
-        reset_acceleration();
-
-        // allowing parallelization for performance
-        #pragma omp parallel
-        {
-            // each thread has its own acceleration
-            std::vector<float> acc_x_private(num_particles, 0.0f);
-            std::vector<float> acc_y_private(num_particles, 0.0f);
-            std::vector<float> acc_z_private(num_particles, 0.0f);
-
-            #pragma omp for schedule(dynamic, 32) nowait
-            for (int i = 0; i < num_particles; ++i) {
-                // accessing local variables > accessing vector elements, thus we have the code below:
-                float pos_x_i = pos_x[i];
-                float pos_y_i = pos_y[i];
-                float pos_z_i = pos_z[i];
-                float mass_i = masses[i];
-
-                for (int j = i + 1; j < num_particles; ++j) {
-                    float dx = pos_x[j] - pos_x_i;
-                    float dy = pos_y[j] - pos_y_i;
-                    float dz = pos_z[j] - pos_z_i;
-
-                    float r2 = dx * dx + dy * dy + dz * dz + epsilon;
-                    float rinv = quake_root(r2);
-                    float rinv3 = rinv * rinv * rinv;
-                    float force = G * rinv3;
-
-                    // Newton's law!!
-                    float fx = force * dx;
-                    float fy = force * dy;
-                    float fz = force * dz;
-
-                    acc_x_private[i] += fx * masses[j];
-                    acc_y_private[i] += fy * masses[j];
-                    acc_z_private[i] += fz * masses[j];
-
-                    acc_x_private[j] -= fx * mass_i;
-                    acc_y_private[j] -= fy * mass_i;
-                    acc_z_private[j] -= fz * mass_i;
-                }
-            }
-
-            #pragma omp critical
-            {
-                for (int i = 0; i < num_particles; ++i) {
-                    acc_x[i] += acc_x_private[i];
-                    acc_y[i] += acc_y_private[i];
-                    acc_z[i] += acc_z_private[i];
-                }
-            }
-        }
-    }
     private:
 
+    // getting octant of particle in node
     int get_octant(const Node* node, float x, float y, float z) const {
         int octant = 0;
         if (x > node->center_x) octant |= 1;
@@ -243,7 +220,8 @@ class System {
         return octant;
     }
 
-    void insert_particle(Node* node, int particle_id) {
+    // adding particle into node in octant
+    void insert_particle(Node* node, int particle_id ) {
         if (node-> particles.empty() && node->is_leaf) {
             node->particles.push_back(particle_id);
             return;
@@ -258,6 +236,7 @@ class System {
             return;
         }
 
+        // recursively insert particle into child nodes
         if (node->is_leaf) {
             node->is_leaf = false;
             auto temp_particles = std::move(node->particles);
@@ -268,9 +247,151 @@ class System {
             insert_particle(node, particle_id);
             return;
         }
-    }
-};
 
+        int octant = get_octant(node, pos_x[particle_id], pos_y[particle_id], pos_z[particle_id]);
+
+        float child_size = node->size * 0.5f;
+        float offset = child_size * 0.5f;
+
+        float child_centers[8][3] = {
+            {node->center_x - offset, node->center_y - offset, node->center_z - offset}, // 0: left-bottom-back
+            {node->center_x + offset, node->center_y - offset, node->center_z - offset}, // 1: right-bottom-back
+            {node->center_x - offset, node->center_y + offset, node->center_z - offset}, // 2: left-top-back
+            {node->center_x + offset, node->center_y + offset, node->center_z - offset}, // 3: right-top-back
+            {node->center_x - offset, node->center_y - offset, node->center_z + offset}, // 4: left-bottom-front
+            {node->center_x + offset, node->center_y - offset, node->center_z + offset}, // 5: right-bottom-front
+            {node->center_x - offset, node->center_y + offset, node->center_z + offset}, // 6: left-top-front
+            {node->center_x + offset, node->center_y + offset, node->center_z + offset}  // 7: right-top-front
+        };
+
+        if (!node->children[octant]) {
+            node->children[octant] = std::make_unique<Node>(
+                child_centers[octant][0],
+                child_centers[octant][1],
+                child_centers[octant][2],
+                child_size
+            );
+        }
+
+        insert_particle(node->children[octant].get(), particle_id);
+    }
+
+    void compute_mass_properties(Node* node) {
+        if (node->is_leaf) {
+            node->total_mass = 0.0f;
+            node->com_x = 0.0f;
+            node->com_y = 0.0f;
+            node->com_z = 0.0f;
+
+            for (int pid : node->particles) {
+                node->total_mass += masses[pid];
+                node->com_x += pos_x[pid] * masses[pid];
+                node->com_y += pos_y[pid] * masses[pid];
+                node->com_z += pos_z[pid] * masses[pid];
+            }
+
+            if (node->total_mass > 0.0f) {
+                node->com_x /= node->total_mass;
+                node->com_y /= node->total_mass;
+                node->com_z /= node->total_mass;
+            }
+        } else {
+            node->total_mass = 0.0f;
+            node->com_x = 0.0f;
+            node->com_y = 0.0f;
+            node->com_z = 0.0f;
+
+            for (int i = 0; i < 8; ++i) {
+                if (node->children[i]) {
+                    compute_mass_properties(node->children[i].get());
+                    node->total_mass += node->children[i]->total_mass;
+                    node->com_x += node->children[i]->com_x * node->children[i]->total_mass;
+                    node->com_y += node->children[i]->com_y * node->children[i]->total_mass;
+                    node->com_z += node->children[i]->com_z * node->children[i]->total_mass;
+                }
+            }
+
+            if (node->total_mass > 0.0f) {
+                node->com_x /= node->total_mass;
+                node->com_y /= node->total_mass;
+                node->com_z /= node->total_mass;
+            }
+        }
+    }
+
+    void compute_node_force(const Node* node, int particle_id, float& acc_x, float& acc_y, float& acc_z) {
+        if (!node || node->total_mass == 0.0f) return;
+        // Calculate distance to node's center of mass
+        float dx = node->com_x - pos_x[particle_id];
+        float dy = node->com_y - pos_y[particle_id];
+        float dz = node->com_z - pos_z[particle_id];
+
+        float r2 = dx*dx + dy*dy + dz*dz + epsilon;
+        float r = sqrtf(r2);
+
+        if (node->size / r < theta || node->is_leaf) {
+            float rinv = quake_root(r2);
+            float rinv3 = rinv * rinv * rinv;
+            float force = G * rinv3;  // G / r^3
+
+            acc_x += force * dx * node->total_mass;
+            acc_y += force * dy * node->total_mass;
+            acc_z += force * dz * node->total_mass;
+        }
+
+        else {
+            for (int i = 0; i < 8; ++i) {
+                if (node->children[i]) {
+                    compute_node_force(node->children[i].get(), particle_id, acc_x, acc_y, acc_z);
+                }
+            }
+        }
+    }
+
+    public:
+
+    void compute_gravity_barnes_hut() {
+        reset_acceleration();
+
+        float min_x = pos_x[0], max_x = pos_x[0];
+        float min_y = pos_y[0], max_y = pos_y[0];
+        float min_z = pos_z[0], max_z = pos_z[0];
+
+        for (int i = 1; i < num_particles; ++i) {
+            min_x = std::min(min_x, pos_x[i]); max_x = std::max(max_x, pos_x[i]);
+            min_y = std::min(min_y, pos_y[i]); max_y = std::max(max_y, pos_y[i]);
+            min_z = std::min(min_z, pos_z[i]); max_z = std::max(max_z, pos_z[i]);
+        }
+
+        float padding = 0.1f;
+        min_x -= padding; max_x += padding;
+        min_y -= padding; max_y += padding;
+        min_z -= padding; max_z += padding;
+
+        float center_x = (min_x + max_x) * 0.5f;
+        float center_y = (min_y + max_y) * 0.5f;
+        float center_z = (min_z + max_z) * 0.5f;
+        float size = std::max({max_x - min_x, max_y - min_y, max_z - min_z}) * 0.5f;
+
+        auto root = std::make_unique<Node>(center_x, center_y, center_z, size);
+
+        for (int i = 0; i < num_particles; ++i) {
+            insert_particle(root.get(), i);
+        }
+
+        compute_mass_properties(root.get());
+
+        for (int i = 0; i < num_particles; ++i) {
+            float acc_x_i = 0.0f, acc_y_i = 0.0f, acc_z_i = 0.0f;
+            compute_node_force(root.get(), i, acc_x_i, acc_y_i, acc_z_i);
+            acc_x[i] = acc_x_i;
+            acc_y[i] = acc_y_i;
+            acc_z[i] = acc_z_i;
+        }
+    }
+
+
+};
 // not my OpenGL code...
 GLFWwindow* window = nullptr;
 
@@ -377,8 +498,8 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        sys.compute_gravity();
-        sys.update(0.01f);
+        sys.compute_gravity_barnes_hut();
+        sys.update(0.001f);
 
         render(sys);
         glfwSwapBuffers(window);
