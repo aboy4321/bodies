@@ -59,14 +59,17 @@ struct Node {
     Node() = default;
 };
 
+
 // N body sim system
 class System {
     public:
+        // creating components of bodies/system
         std::vector<float> x, y;
         std::vector<float> vx, vy;
         std::vector<float> ax, ay;
         std::vector<float> m;
 
+        // adds a body to vectors and increases variables to be computed
         void add_body(float px, float py, float mvx, float mvy, float mass) {
             x.push_back(px); y.push_back(py);
             vx.push_back(mvx); vy.push_back(mvy);
@@ -252,8 +255,8 @@ class Quadtree {
 };
 
 int main() {
-    const int screenWidth = 800;
-    const int screenHeight = 800;
+    const int screenWidth = 1000;
+    const int screenHeight = 1000;
 
     InitWindow(screenWidth, screenHeight, "N-Body Simulation - Barnes-Hut");
     SetTargetFPS(144);
@@ -279,8 +282,9 @@ int main() {
         sys.add_body(px, py, vx, vy, 1.0f);
     }
 
-    float dt = 0.01f; hile (!WindowShouldClose()) {
-        Quadtree qt(sys.get_bounds(), 0.5f);
+    float dt = 0.01f; 
+    while (!WindowShouldClose()) {
+        Quadtree qt(sys.get_bounds(), 0.25f);
         qt.build(sys);
         
         qt.calculate_forces(sys);
