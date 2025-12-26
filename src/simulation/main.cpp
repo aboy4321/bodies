@@ -27,6 +27,11 @@ struct Node {
         is_leaf(true) {}
 };
 
+struct Octree {
+  Octree(Node *node) : node(node) {}
+  Node *node;
+};
+
 class System {
     private:
     std::stack<Node> root_node;
@@ -51,7 +56,7 @@ class System {
     System &operator=(System &&) = default;
 
     // resizing to accomodate for N value
-    System(int N, float gravity_const) : num_particles(N), G(gravity_const), epsilon(1e-2f), theta(1.0f) {
+    System(int N, float gravity_const) : num_particles(N), G(gravity_const), epsilon(1e-4f), theta(1.0f) {
         pos_x.resize(N);
         pos_y.resize(N);
         pos_z.resize(N);
@@ -295,7 +300,7 @@ class System {
         float dy = node->com_y - pos_y[particle_id];
         float dz = node->com_z - pos_z[particle_id];
 
-        float r2 = dx*dx + dy*dy + dz*dz + epsilon;
+        float r2 = dx*dx + dy*dy + dz*dz + (epsilon * epsilon);
         float r = sqrtf(r2);
 
         if (node->size / r < theta || node->is_leaf) {
