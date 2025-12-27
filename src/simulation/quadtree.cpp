@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <raylib.h>
+#include <omp.h>
 #include <iostream>
 
 // defining points in space for bounding box
@@ -297,7 +298,7 @@ int main() {
     float central_mass = 10000.0f;
     sys.add_body(screenWidth/2.0f, screenHeight/2.0f, 0, 0, central_mass);
     
-    int num_particles = 1000;
+    int num_particles = 2000;
     for(int i = 0; i < num_particles; ++i) {
         float r = 100 + (rand() % 300);  
         float angle = (rand() % 360) * 3.14159f / 180.0f;
