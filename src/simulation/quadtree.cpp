@@ -32,10 +32,11 @@ struct Box {
         max.y = std::max(max.y, p.y);
         return *this;
     }
-
+    
     float width() const { return max.x - min.x; }
     float height() const { return max.y - min.y; }
-
+    
+    // checking if body is contained in quadtree node/ boundary
     bool contains(const Point& p) const {
         static constexpr float epsilon = 1e-6f;
         return (p.x >= min.x - epsilon && p.x <= max.x + epsilon &&
@@ -229,11 +230,32 @@ class Quadtree {
             }                        
         }
 
+        void draw_recursive(Node* node) {
+            if (!node) return;
+
+            Rectangle rect = { 
+                node->boundary.min.x, 
+                node->boundary.min.y, 
+                node->boundary.width(), 
+                node->boundary.height() 
+            };
+
+            DrawRectangleLinesEx(rect, 1.0f, Fade(GRAY, 0.15f));
+
+            if (!node->is_leaf) {
+                for (int i = 0; i < 4; ++i) {
+                    if (node->children[i]) {
+                        draw_recursive(node->children[i].get());
+                    }
+                }
+            }
+        }
+
     public:
         Quadtree(const Box& initialBounds, float theta_val) 
             : theta(theta_val) {
                 root = std::make_unique<Node>(initialBounds);
-            }
+        }
 
         void build(const System& sys) {
             Box current_bounds = sys.get_bounds();
@@ -252,13 +274,22 @@ class Quadtree {
                 sys.ay[i] = fy / sys.m[i];
             }
         }
+
+        void draw() {
+            draw_recursive(root.get());
+    }
 };
 
 int main() {
     const int screenWidth = 1000;
     const int screenHeight = 1000;
 
-    InitWindow(screenWidth, screenHeight, "N-Body Simulation - Barnes-Hut");
+    InitWindow(screenWidth, screenHeight, "n bod sim, bhutt ver");
+
+    if (!IsWindowReady()) {
+        return 1; 
+    }
+
     SetTargetFPS(144);
 
     System sys;
@@ -290,17 +321,17 @@ int main() {
         qt.calculate_forces(sys);
         
         for (size_t i = 0; i < sys.x.size(); ++i) {
-            // Update velocities
             sys.vx[i] += sys.ax[i] * dt;
             sys.vy[i] += sys.ay[i] * dt;
             
-            // Update positions
             sys.x[i] += sys.vx[i] * dt;
             sys.y[i] += sys.vy[i] * dt;
         }
 
         BeginDrawing();
         ClearBackground(BLACK);
+        
+        qt.draw();
 
         for (size_t i = 0; i < sys.x.size(); ++i) {
             float radius = (i == 0) ? 8.0f : 2.0f;
