@@ -195,8 +195,8 @@ class Quadtree {
             out_fx = 0.0f;
             out_fy = 0.0f;
 
-            static std::vector<Node*> stack;
-            stack.clear();
+            std::vector<Node*> stack;
+            stack.reserve(64);
             stack.push_back(root.get());
 
             while (!stack.empty()) {
@@ -268,6 +268,7 @@ class Quadtree {
         }
 
         void calculate_forces(System& sys) {
+            #pragma omp parallel for
             for (size_t i = 0; i < sys.x.size(); ++i) {
                 float fx = 0, fy = 0;
                 calculate_force(i, sys, fx, fy);
@@ -295,10 +296,10 @@ int main() {
 
     System sys;
     
-    float central_mass = 10000.0f;
+    float central_mass = 100000.0f;
     sys.add_body(screenWidth/2.0f, screenHeight/2.0f, 0, 0, central_mass);
     
-    int num_particles = 2000;
+    int num_particles = 100;
     for(int i = 0; i < num_particles; ++i) {
         float r = 100 + (rand() % 300);  
         float angle = (rand() % 360) * 3.14159f / 180.0f;
@@ -320,7 +321,6 @@ int main() {
         qt.build(sys);
         
         qt.calculate_forces(sys);
-        
         for (size_t i = 0; i < sys.x.size(); ++i) {
             sys.vx[i] += sys.ax[i] * dt;
             sys.vy[i] += sys.ay[i] * dt;
@@ -345,5 +345,4 @@ int main() {
     }
 
     CloseWindow();
-    return 0;
 }
