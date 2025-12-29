@@ -52,12 +52,15 @@ struct Node {
     float com_x = 0.f;
     float com_y = 0.f;
     int bodyIndex = -1;
+    float node_size;
 
     std::unique_ptr<Node> children[4];
 
     Box boundary;
 
-    Node(const Box& bounds) : boundary(bounds) {}
+    Node(const Box& bounds) : boundary(bounds) {
+        node_size = std::max(bounds.width(), bounds.height());
+    }
     Node() = default;
 };
 
@@ -212,9 +215,9 @@ class Quadtree {
 
                 float dist = std::sqrt(distSqr);
 
-                float s = std::max(node->boundary.width(), node->boundary.height());
+                // float s = std::max(node->boundary.width(), node->boundary.height());
 
-                if (node->is_leaf || (s / dist) < theta) {
+                if (node->is_leaf || (node->node_size / dist) < theta) {
                     if (node->bodyIndex == idx) continue;
     
                     float force = (G * sys.m[idx] * node->total_mass) / distSqr;
@@ -268,7 +271,7 @@ class Quadtree {
         }
 
         void calculate_forces(System& sys) {
-            #pragma omp parallel for schedule(dynamic, 16)
+            #pragma omp parallel for simd
             for (size_t i = 0; i < sys.x.size(); ++i) {
                 float fx = 0, fy = 0;
                 calculate_force(i, sys, fx, fy);
@@ -281,8 +284,6 @@ class Quadtree {
             draw_recursive(root.get());
     }
 };
-
-
 
 int main() {
     const int screenWidth = 1000;
@@ -301,7 +302,7 @@ int main() {
     float central_mass = 10000.0f;
     sys.add_body(screenWidth/2.0f, screenHeight/2.0f, 0, 0, central_mass);
     
-    int num_particles = 1000;
+    int num_particles = 500;
     for(int i = 0; i < num_particles; ++i) {
         float r = 100 + (rand() % 300);  
         float angle = (rand() % 360) * 3.14159f / 180.0f;
@@ -334,7 +335,7 @@ int main() {
         BeginDrawing();
         ClearBackground(BLACK);
         
-        qt.draw();
+        //qt.draw();
 
         for (size_t i = 0; i < sys.x.size(); ++i) {
             float radius = (i == 0) ? 8.0f : 2.0f;
