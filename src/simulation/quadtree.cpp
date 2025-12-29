@@ -268,7 +268,7 @@ class Quadtree {
         }
 
         void calculate_forces(System& sys) {
-            #pragma omp parallel for
+            #pragma omp parallel for schedule(dynamic, 16)
             for (size_t i = 0; i < sys.x.size(); ++i) {
                 float fx = 0, fy = 0;
                 calculate_force(i, sys, fx, fy);
@@ -282,6 +282,8 @@ class Quadtree {
     }
 };
 
+
+
 int main() {
     const int screenWidth = 1000;
     const int screenHeight = 1000;
@@ -292,14 +294,14 @@ int main() {
         return 1; 
     }
 
-    SetTargetFPS(144);
+    SetTargetFPS(inf);
 
     System sys;
     
-    float central_mass = 100000.0f;
+    float central_mass = 10000.0f;
     sys.add_body(screenWidth/2.0f, screenHeight/2.0f, 0, 0, central_mass);
     
-    int num_particles = 100;
+    int num_particles = 1000;
     for(int i = 0; i < num_particles; ++i) {
         float r = 100 + (rand() % 300);  
         float angle = (rand() % 360) * 3.14159f / 180.0f;
