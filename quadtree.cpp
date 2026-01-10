@@ -299,10 +299,10 @@ int main() {
 
     System sys;
     
-    float central_mass = 10000.0f;
+    float central_mass = 1000.0f;
     sys.add_body(screenWidth/2.0f, screenHeight/2.0f, 0, 0, central_mass);
     
-    int num_particles = 500;
+    int num_particles = 1000;
     for(int i = 0; i < num_particles; ++i) {
         float r = 100 + (rand() % 300);  
         float angle = (rand() % 360) * 3.14159f / 180.0f;
@@ -335,7 +335,7 @@ int main() {
         BeginDrawing();
         ClearBackground(BLACK);
         
-        //qt.draw();
+        qt.draw();
 
         for (size_t i = 0; i < sys.x.size(); ++i) {
             float radius = (i == 0) ? 8.0f : 2.0f;
